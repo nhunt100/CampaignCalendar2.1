@@ -70,7 +70,7 @@ public with sharing class CampaignGanttController {
     }
     
     // constructor for CampaignGanttContoller 
-    public CampaignSearchController() {
+    public CampaignGanttController() {
         quantityAdded = false;
         quarterOrYear = false;
         

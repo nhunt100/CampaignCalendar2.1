@@ -131,7 +131,7 @@
                 $("#toggleRcontent").slideToggle('fast');
             });
             $("#toggleSegment").on('click', function() {
-                $("#toggleScontent").slideToggle('fast');
+                $("#toggleSGcontent").slideToggle('fast');
             });
             $("#toggleType").on('click', function() {
                 $("#toggleTcontent").slideToggle('fast');
@@ -616,7 +616,7 @@
 
                                     <dd>
                                         <div>
-                                            <blockquote id="toggleScontent">
+                                            <blockquote id="toggleSGcontent">
                                                 <apex:selectCheckboxes value="{!segmentValues}" layout="pageDirection" id="filter2" onchange="doSearch();">
                                                     <apex:selectOptions value="{!camSegments}" />
                                                     <apex:actionSupport event="onchange" reRender="results,debug,jsFilter,checkedResults,filter1,filter2,filter3,filter4,filter5,filter6,filter7" action="{!runSearch}" />
