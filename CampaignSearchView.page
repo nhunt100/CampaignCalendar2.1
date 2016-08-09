@@ -1,0 +1,919 @@
+<apex:page controller="CampaignGanttController" action="{!eventLoad}" sidebar="false">
+
+    <link href="{!$Resource.fullCalendarCSS}" rel="stylesheet" />
+    <link href="https://ajax.googleapis.com/ajax/libs/jqueryui/1.11.4/themes/smoothness/jquery-ui.css" rel="stylesheet" type="text/css" />
+
+    <script src="//ajax.googleapis.com/ajax/libs/jquery/2.1.3/jquery.min.js"></script>
+    <script src="//ajax.googleapis.com/ajax/libs/jqueryui/1.11.2/jquery-ui.min.js"></script>
+    <script src="{!$Resource.momentMinJS}"></script>
+    <script src="{!$Resource.fullCalendarMinJS}"></script>
+    
+    <!-- Javascript Element -->
+    <script type="text/javascript">
+        // renders it's contents after the DOM has loaded
+        $(document).ready(function() {
+            // renders the FulCalendar Functionality
+            $("#calendar").fullCalendar({
+                header: {
+                    left: 'prev,next today',
+                    center: 'title',
+                    right: 'agendaDay,agendaWeek,month'
+                },
+                editable: false,
+                // adds in the onClick dialog box functionality for the FullCalendar Views
+                // Day, Week, Month
+                eventClick: function(event, jsEvent, view) {
+                    //set the values and open the modal
+                    $("#dialogDescription").html(event.description);
+                    $("#dialogStartTime").html(moment(event.start).format('MMM Do, YYYY'));
+                    $("#dialogEndTime").html(moment(event.end).format('MMM Do, YYYY'));
+                    $("#dialogOwner").html(event.owner);
+                    $("#dialogRegion").html(event.region);
+                    $("#dialogCloud").html(event.cloud);
+                    $("#dialogCountry").html(event.country);
+                    $("#dialogType").html(event.type);
+                    $("#dialogSegment").html(event.segment);
+                    $("#dialogSource").html(event.sourceCmp);
+                    $("#dialogStatus").html(event.status);
+        
+                    $("#dialogEventLink").html("<button type='button'>Read More</button>");
+                    $("#dialogEventLink").attr('href', event.url);
+                    $("#eventContent").dialog({
+                        modal: true,
+                        title: event.title,
+                        width: 400
+                    });
+                    return false;
+                },
+                // eventSource is the source of the event data. Built within an OutputPanel so 
+                // that it can be rerendered whenever a filter is applied. 
+                events: eventSource,
+                weekends: false,
+                eventAfterAllRender: function(view) {
+                    var header = $("#calendar").find(".fc-header");
+                    // trigger the current view
+                    header.find('.fc-header-right').find('.fc-button').off('mouseup').on('mouseup', function() {
+                        if (!$(this).hasClass('fc-button-listView')) {
+                            $("#calendar").data("view", '');
+                        }
+        
+                    });
+                    // Used to identify whether listView is active, 
+                    // If it is then it's redrawn otherwise it's removed
+                    if ($("#calendar").data("view") != 'listView') {
+                        header.find(".fc-button-listView").removeClass('fc-state-active active');
+                        $("#listView").remove();
+                    }
+                },
+                eventRender: function(event, e) {
+                    // Which view is used to detect what kind of processing performed
+                    currentView = $('#calendar').fullCalendar('getView').name;
+                }
+            });
+        
+            /* Variabes for handeling Dates */
+            var goToDate = new Date($('#calendar').fullCalendar('getDate'));
+            var fiscalQuarterYearArray = dateToFiscal(goToDate);
+        
+            var headerRight = $("#calendar").find(".fc-header").find(".fc-header-right");
+            headerRight.find(".fc-corner-right").removeClass('fc-corner-right');
+        
+            var listBtn = $(".fc-button-month").clone().appendTo(".fc-header-right");
+            listBtn.removeClass('fc-button-month fc-state-active');
+            listBtn.addClass('fc-corner-right fc-button-listView').text("list");
+            listBtn.on('click', function() {
+                renderListView();
+            });
+        
+            listBtn.siblings().on('click', function() {
+                listViewNotRendered();
+                // passValues(0, 0);
+            });
+        
+        
+            /* Variables for accessing the buttons and title */
+            var prevBtn = $("#calendar").find(".fc-header").find(".fc-header-left").find(".fc-button-prev");
+            var nextBtn = $("#calendar").find(".fc-header").find(".fc-header-left").find(".fc-button-next");
+            var todayBtn = $("#calendar").find(".fc-header").find(".fc-header-left").find(".fc-button-today");
+            var titleText = $("#calendar").find(".fc-header").find(".fc-header-center").find(".fc-header-title");
+            
+            var searchBox = $("#searchBox");
+            $(".fc-header-left").append("<span class='fc-header-space'></span>");
+            $(".fc-header-left ").append(searchBox);
+            
+            
+            
+            /*  When the buttons are pressed for navigation in the dates  */
+            prevBtn.on('click', function() {
+                if ($('#calendar').fullCalendar('getView').name == 'listView') {
+                    console.log("===== prevClick =====");
+                    $('#calendar').fullCalendar('next');
+                    goToDateFunction('prev');
+                }
+            });
+            
+            nextBtn.on('click', function() {
+                if ($('#calendar').fullCalendar('getView').name == 'listView') {
+                    console.log("===== nextClick =====");
+                    $('#calendar').fullCalendar('prev');
+                    goToDateFunction('next');
+                }
+            });
+            
+            todayBtn.on('click', function() {
+                if ($('#calendar').fullCalendar('getView').name == 'listView') {
+                    console.log("===== todayClick =====");
+                    goToDateFunction('today');
+                }
+            });
+            
+            $("#toggleRegion").on('click', function() {
+                $("#toggleRcontent").slideToggle('fast');
+            });
+            $("#toggleSegment").on('click', function() {
+                $("#toggleScontent").slideToggle('fast');
+            });
+            $("#toggleType").on('click', function() {
+                $("#toggleTcontent").slideToggle('fast');
+            });
+            $("#toggleSource").on('click', function() {
+                $("#toggleScontent").slideToggle('fast');
+            });
+            $("#toggleCountry").on('click', function() {
+                $("#toggleCcontent").slideToggle('fast');
+            });
+            $("#toggleOwner").on('click', function() {
+                $("#toggleOcontent").slideToggle('fast');
+            });
+            $("#toggleCloud").on('click', function() {
+                $("#toggleCLcontent").slideToggle('fast');
+            });
+            
+        });
+        /* end of document */
+        
+        // functions for rendering and unrendering the List View
+        function renderListView() {
+            if ($("#calendar").fullCalendar('getView') != 'listView') {
+                // Copy the original month to listView
+                $("#calendar").fullCalendar('changeView', 'month');
+                var newView = $("#calendar").fullCalendar('getView');
+                newView.name = 'listView';
+                $("#calendar").fullCalendar('changeView', 'listView');
+            }
+            var listBtnClick = $(".fc-button-listView");
+            listBtnClick.addClass("fc-state-active");
+            listBtnClick.siblings().removeClass('fc-state-active');
+        
+            $("#calendar").data("view", 'listView');
+        
+            goToDateFunction('list');
+        
+            var listViewHtml = document.createElement('div');
+            listViewHtml.setAttribute("id", "listView");
+            var contents = '<div>';
+            listViewRendered();
+            contents += "</div>";
+            listViewHtml.innerHTML = contents;
+            $("#calendar").find(".fc-content").html(listViewHtml);
+        
+            console.log("===== listClick =====");
+        }
+        function listViewRendered() {
+            $("div.dontRenderList").addClass('doRenderList').removeClass('dontRenderList');
+        }
+        function listViewNotRendered() {
+            $("div.doRenderList").addClass('dontRenderList').removeClass('doRenderList');
+            passValues(0, 0);
+            // Think this is where this should go
+            // will then be adding in Gantt if statement
+        
+        }
+        
+        
+        // functions for moving from date to date while in List or Gantt View
+        function goToDateFunction(nextPrevTodayList) {
+            var action = nextPrevTodayList;
+            goToDate = new Date($('#calendar').fullCalendar('getDate'));
+            fiscalQuarterYearArray = dateToFiscal(goToDate);
+            if ((action == 'next') || (action == 'prev') || (action == 'QY'))
+                fiscalQuarterYearArray = alterQuarterYear(fiscalQuarterYearArray, action);
+            passValues(fiscalQuarterYearArray[0], fiscalQuarterYearArray[1]);
+            if ((action == "next") || (action == "prev") || (action == 'QY')) {
+                newDate = buildGoToDateString(fiscalQuarterYearArray);
+                jumpToDate(newDate);
+            }
+            alterListTitle(fiscalQuarterYearArray);
+            console.log(fiscalQuarterYearArray);
+        }
+        
+        function dateToFiscal(dateToChange) {
+            var changeDate = dateToChange;
+            var changeMonth = changeDate.getMonth() + 1;
+            var changeYear = changeDate.getFullYear();
+            var quarter;
+            var year;
+            // for quarter
+            if ((changeMonth == 2) || (changeMonth == 3) || (changeMonth == 4)) {
+                quarter = 1;
+            }
+            else if ((changeMonth == 5) || (changeMonth == 6) || (changeMonth == 7)) {
+                quarter = 2;
+            }
+            else if ((changeMonth == 8) || (changeMonth == 9) || (changeMonth == 10)) {
+                quarter = 3;
+            }
+            else {
+                quarter = 4;
+            }
+            // for year
+            if (changeMonth == 1) {
+                year = changeYear.toString().substr(2, 2);
+            }
+            else {
+                changeYear++;
+                year = changeYear.toString().substr(2, 2);
+            }
+            return [quarter, year];
+        }
+        
+        function jumpToDate(newQandY) {
+            var goToDate = newQandY;
+            $("#calendar").fullCalendar('gotoDate', goToDate);
+        }
+        
+        function alterQuarterYear(fiscalQuarterYearArray, nextprevtoday) {
+            var quarter = fiscalQuarterYearArray[0];
+            var year = fiscalQuarterYearArray[1];
+        
+            // nextprevtoday is a string for distinguishing whether the user has clicked next or prev
+            if (nextprevtoday == 'next') {
+                // next
+                if (qtrOrYr == "true") {
+                    quarter = 1;
+                    year++;
+                }
+                else {
+                    if (quarter == 4) {
+                        year++;
+                        quarter = 1;
+                    }
+                    else {
+                        quarter++;
+                    }
+                }
+            }
+            else if (nextprevtoday == 'prev') {
+                // prev
+                if (qtrOrYr == "true") {
+                    quarter = 1;
+                    year--;
+                }
+                else {
+                    if (quarter == 1) {
+                        year--;
+                        quarter = 4;
+                    }
+                    else {
+                        quarter--;
+                    }
+                }
+            }
+            return [quarter, year];
+        }
+        
+        // format YYYY-MM-DD
+        function buildGoToDateString(newGoToDate) {
+            var quarter = newGoToDate[0];
+            var year = newGoToDate[1];
+        
+            if (quarter == 1) {
+                return '20' + (year - 1) + '-02-01';
+            }
+            else if (quarter == 2) {
+                return '20' + (year - 1) + '-05-01';
+            }
+            else if (quarter == 3) {
+                return '20' + (year - 1) + '-08-01';
+            }
+            else {
+                return '20' + (year - 1) + '-11-01';
+            }
+        }
+        
+        function alterListTitle(dateArrayForTitle) {
+            var quarter = dateArrayForTitle[0];
+            var year = dateArrayForTitle[1];
+            var titleText = $("#calendar").find(".fc-header").find(".fc-header-center").find(".fc-header-title");
+        
+            var titleContents = '<h2>FY';
+            titleContents += year;
+            if (qtrOrYr == "false") {
+                titleContents += '-Q' + quarter;
+            }
+            titleContents += '</h2>';
+            titleText.html(titleContents);
+        }
+        
+        function passValues(quarter, year) {
+            passQuarterYear(quarter, year);
+        }
+        
+        // passes the value within the searchbox into the Apex Controller
+        function doSearch() {
+            searchServer(document.getElementById("searchBox").value);
+        }
+        
+        
+    </script>
+    
+    <!-- 
+    The output panels contain JS so that Apex varaibles can be rerendered when searches have 
+    been conducted on the database and new information can be represented.
+    -->
+    <apex:outputPanel id="jsFilter">
+        <script>
+            var eventSource = new Array();
+            eventSource = [
+                <apex:repeat value="{!calendarEvents}" var="cal">
+                    {
+                        title: "{!cal.title}",
+                        description: "{!cal.descriptionCamp}",
+                        start: '{!cal.startString}',
+                        end: '{!cal.endString}',
+                        url: '{!cal.url}',
+                        allDay: {!cal.allDay},
+                        className: '{!cal.className}',
+                        region: '{!cal.regionCamp}',
+                        segment: '{!cal.segmentCamp}',
+                        type: '{!cal.typeCamp}',
+                        sourceCmp: '{!cal.sourceCamp}',
+                        country: '{!cal.countryCamp}',
+                        owner: '{!cal.ownerCamp}',
+                        cloud: '{!cal.cloudCamp}',
+                        status: '{!cal.statusCamp}'
+                    },
+                </apex:repeat>
+            ];
+            $("#calendar").fullCalendar('removeEvents');
+            $("#calendar").fullCalendar('addEventSource', eventSource);
+        </script>
+    </apex:outputPanel>
+    <apex:outputPanel id="QuarterOrYearValue">
+        <script>
+            var qtrOrYr = "{!quarterOrYear}";
+        </script>
+    </apex:outputPanel>
+    
+    <!-- CSS styling for HTML Elements -->
+    <style>
+        #eventContent {
+            display: none;
+        }
+        
+        .doRenderList {
+            display: block;
+        }
+        
+        .dontRenderList {
+            display: none;
+        }
+        
+        .dropdown {
+            width: calc( (100% / 7) - 15px);
+            float: left;
+        }
+        
+        .dropdown dd,
+        .dropdown dt {
+            margin: 0px;
+            padding: 0px;
+        }
+        
+        .dropdown blockquote {
+            margin: -1px 0 0 0;
+        }
+        
+        .dropdown dd {
+            position: relative;
+        }
+        
+        .dropdown dt a {
+            color: white;
+            background: #0086b3;
+            background: -webkit-linear-gradient(bottom, #006080, #0086b3);
+            /* For Safari 5.1 to 6.0 */
+            background: -o-linear-gradient(top, #006080, #0086b3);
+            /* For Opera 11.1 to 12.0 */
+            background: -moz-linear-gradient(top, #006080, #0086b3);
+            /* For Firefox 3.6 to 15 */
+            background: linear-gradient(to top, #006080, #0086b3);
+            /* Standard syntax */
+            border-radius: 5px;
+            box-shadow: 0 2px 2px rgba(0, 0, 0, 0.5);
+            display: block;
+            outline: none;
+            padding: 8px 20px 5px 10px;
+            min-height: 25px;
+            line-height: 24px;
+        }
+        
+        .dropdown dt a:hover {
+            background: #0086b3;
+            color: white;
+        }
+        
+        .dropdown dt a span,
+        .multiSel span {
+            cursor: pointer;
+            display: inline-block;
+            padding: 0 3px 2px 0;
+        }
+        
+        .dropdown dd blockquote {
+            border-radius: 0 0 5px 5px;
+            border: 1px solid rgba(0, 0, 0, 0.2);
+            border-top: none;
+            list-style: none;
+            background: #fff;
+            display: none;
+            left: 0px;
+            padding: 2px 15px 2px 5px;
+            position: absolute;
+            top: 2px;
+            max-height: 200px;
+            overflow-y: auto;
+            z-index: 30;
+        }
+        
+        .type-direct_mail {
+            background: #AC725E;
+            border-color: #875645;
+        }
+        
+        <!-- Brown --> .type-direct_marketing {
+            background: #F83A22;
+            border-color: #C61C06;
+        }
+        
+        <!-- Red --> .type-email {
+            background: #FF7537;
+            border-color: #FF5100;
+        }
+        
+        <!-- Orange --> .type-event {
+            background: #FAD165;
+            border-color: #dfa107;
+        }
+        
+        <!-- Light Orange --> .type-other {
+            background: #a6a6a6;
+            border-color: #737373;
+        }
+        
+        <!-- Grey --> .type-outbound_call {
+            background: #B99AFF;
+            border-color: #824DFF;
+        }
+        
+        <!-- Light Purple --> .type-print_marketing {
+            background: #16A765;
+            border-color: #0F7145;
+        }
+        
+        <!-- Dark Green --> .type-sales_enablement {
+            background: #9FE1E7;
+            border-color: #47c6d1;
+        }
+        
+        <!-- Sky Blue --> .type-social_media {
+            background: #CD74E6;
+            border-color: #BA3CDD;
+        }
+        
+        <!-- Bright Purple --> .type-top_account_targeting {
+            background: #94b3e0;
+            border-color: #1A5ECB;
+        }
+        
+        <!-- Blue --> .type-webinar {
+            background: #B3DC6C;
+            border-color: #77a527;
+        }
+        
+        <!-- Light Green --> .type-web_marketing {
+            background: #F691B2;
+            border-color: #F25A8C;
+        }
+        
+        <!-- Pink --> #calendar {
+            margin-top: 20px;
+        }
+        
+        #cal-options {
+            float: left;
+        }
+        
+        #cal-legend {
+            float: right;
+        }
+        
+        #cal-legend ul {
+            margin: 0;
+            padding: 0;
+            list-style: none;
+        }
+        
+        #cal-legend ul li {
+            margin: 0;
+            padding: 5px;
+            float: left;
+        }
+        
+        #cal-legend ul li span {
+            display: block;
+            height: 16px;
+            width: 16px;
+            margin-right: 4px;
+            float: left;
+            border-radius: 4px;
+        }
+        
+        .fc-event {
+            font-size: 12px;
+        }
+        
+        body a:hover {
+            color: black;
+        }
+        
+        #eventContent table {
+            border: 1px solid #DFDFDF;
+        }
+        
+        #eventContent tr {
+            border: 1px solid #DFDFDF;
+        }
+        
+        #eventContent #dialogFront {
+            background: #DEDEDE;
+        }
+        
+    </style>
+    
+    <!-- HTML and Visaulforce Elements -->
+    <apex:form >
+        <!-- action functions are used for passing values from JS to Apex -->
+        <apex:actionFunction name="searchServer" action="{!getSearchValue}" rerender="results,debug,errors,jsFilter,checkedResults,filter1,filter2,filter3,filter4,filter5,filter6,filter7">
+            <apex:param name="searchBox" value="" />
+        </apex:actionFunction>
+        <apex:actionFunction name="rerenderQuarterOrYear" action="goToDateFunction('QY');" />
+        <apex:actionFunction name="passQuarterYear" action="{!getDateFromJS}" rerender="results,debug,errors,jsFilter,checkedResults,filter1,filter2,filter3,filter4,filter5,filter6,filter7">
+            <apex:param id="currentQuarter" name="currentQuarter" value="" />
+            <apex:param id="currentYear" name="currentYear" value="" />
+        </apex:actionFunction>
+        
+        
+        <apex:pageMessages id="errors" />
+        
+        <apex:pageBlock title="Campaign Calendar" mode="edit">
+            <table width="100%" border="0" id="campaignList">
+                <!-- Dropdown filters, searchbox and navigation content -->
+                <tr>
+                    <td width="100%" valign="top">
+                    
+                        <div id="criteria">
+                            <apex:outputText value="Results: ({!calendarEvents.size}) - Filters: {!checkedFilters}" id="checkedResults" style="font-size: 15px;"></apex:outputText>
+                            
+                            <!-- container for the dropdown filtes -->
+                            <div id="dropDownMenus" style="width:100%; ">
+                                <dl class="dropdown">
+                                    <dt id="toggleRegion">
+                                    <a href="#" >
+                                        <span>Region</span> 
+                                    </a>
+                                </dt>
+
+                                    <dd>
+                                        <div>
+                                            <blockquote id="toggleRcontent">
+                                                <apex:selectCheckboxes value="{!regionValues}" layout="pageDirection" id="filter1" onchange="doSearch();">
+                                                    <apex:selectOptions value="{!camRegions}" />
+                                                    <apex:actionSupport event="onchange" reRender="results,debug,jsFilter,checkedResults,filter1,filter2,filter3,filter4,filter5,filter6,filter7" action="{!runSearch}" />
+
+                                                </apex:selectCheckboxes>
+                                            </blockquote>
+                                        </div>
+                                    </dd>
+                                </dl>
+                                <dl class="dropdown">
+
+                                    <dt>
+                                    <a href="#" id="toggleSegment">
+                                        <span>Segment</span>
+                                    </a>
+                                </dt>
+
+                                    <dd>
+                                        <div>
+                                            <blockquote id="toggleScontent">
+                                                <apex:selectCheckboxes value="{!segmentValues}" layout="pageDirection" id="filter2" onchange="doSearch();">
+                                                    <apex:selectOptions value="{!camSegments}" />
+                                                    <apex:actionSupport event="onchange" reRender="results,debug,jsFilter,checkedResults,filter1,filter2,filter3,filter4,filter5,filter6,filter7" action="{!runSearch}" />
+
+                                                </apex:selectCheckboxes>
+                                            </blockquote>
+                                        </div>
+                                    </dd>
+                                </dl>
+                                <dl class="dropdown">
+
+                                    <dt>
+                                    <a href="#" id="toggleType">
+                                        <span>Type</span>  
+                                    </a>
+                                </dt>
+
+                                    <dd>
+                                        <div>
+                                            <blockquote id="toggleTcontent">
+                                                <apex:selectCheckboxes value="{!typeValues}" layout="pageDirection" id="filter3" onchange="doSearch();">
+                                                    <apex:selectOptions value="{!camTypes}" />
+                                                    <apex:actionSupport event="onchange" reRender="results,debug,jsFilter,checkedResults,filter1,filter2,filter3,filter4,filter5,filter6,filter7" action="{!runSearch}" />
+                                                </apex:selectCheckboxes>
+                                            </blockquote>
+                                        </div>
+                                    </dd>
+                                </dl>
+                                <dl class="dropdown">
+
+                                    <dt>
+                                    <a href="#" id="toggleSource">
+                                        <span>Source</span>  
+                                    </a>
+                                </dt>
+
+                                    <dd>
+                                        <div>
+                                            <blockquote id="toggleScontent">
+                                                <apex:selectCheckboxes value="{!sourceValues}" layout="pageDirection" id="filter4" onchange="doSearch();">
+                                                    <apex:selectOptions value="{!camSources}" />
+                                                    <apex:actionSupport event="onchange" reRender="results,debug,jsFilter,checkedResults,filter1,filter2,filter3,filter4,filter5,filter6,filter7" action="{!runSearch}" />
+                                                </apex:selectCheckboxes>
+                                            </blockquote>
+                                        </div>
+                                    </dd>
+                                </dl>
+                                <dl class="dropdown">
+
+                                    <dt>
+                                    <a href="#" id="toggleCountry">
+                                        <span>Country</span>  
+                                    </a>
+                                </dt>
+
+                                    <dd>
+                                        <div>
+                                            <blockquote id="toggleCcontent">
+                                                <apex:selectCheckboxes value="{!countryValues}" layout="pageDirection" id="filter5" onchange="doSearch();">
+                                                    <apex:selectOptions value="{!camCountries}" />
+                                                    <apex:actionSupport event="onchange" reRender="results,debug,jsFilter,checkedResults,filter1,filter2,filter3,filter4,filter5,filter6,filter7" action="{!runSearch}" />
+                                                </apex:selectCheckboxes>
+                                            </blockquote>
+                                        </div>
+                                    </dd>
+                                </dl>
+                                <dl class="dropdown">
+
+                                    <dt>
+                                    <a href="#" id="toggleOwner">
+                                        <span>Owner</span>  
+                                    </a>
+                                </dt>
+
+                                    <dd>
+                                        <div>
+                                            <blockquote id="toggleOcontent">
+                                                <apex:selectCheckboxes value="{!ownerValues}" layout="pageDirection" id="filter6" onchange="doSearch();">
+                                                    <apex:selectOptions value="{!camOwners}" />
+                                                    <apex:actionSupport event="onchange" reRender="results,debug,jsFilter,checkedResults,filter1,filter2,filter3,filter4,filter5,filter6,filter7" action="{!runSearch}" />
+                                                </apex:selectCheckboxes>
+                                            </blockquote>
+                                        </div>
+                                    </dd>
+                                </dl>
+                                <dl class="dropdown">
+
+                                    <dt>
+                                    <a href="#" id="toggleCloud">
+                                        <span>Cloud</span>  
+                                    </a>
+                                </dt>
+
+                                    <dd>
+                                        <div>
+                                            <blockquote id="toggleCLcontent">
+                                                <apex:selectCheckboxes value="{!cloudValues}" layout="pageDirection" id="filter7" onchange="doSearch();">
+                                                    <apex:selectOptions value="{!camclouds}" />
+                                                    <apex:actionSupport event="onchange" reRender="results,debug,jsFilter,checkedResults,filter1,filter2,filter3,filter4,filter5,filter6,filter7" action="{!runSearch}" />
+                                                </apex:selectCheckboxes>
+                                            </blockquote>
+                                        </div>
+                                    </dd>
+                                </dl>
+                            </div>
+                            
+                            <div id="cal-legend">
+                                <ul>
+                                    <li><span class="type-event"></span>Event</li>
+                                    <li><span class="type-sales_enablement"></span>Sales Enablement</li>
+                                    <li><span class="type-top_account_targeting"></span>Top Account Targeting</li>
+                                    <li><span class="type-webinar"></span>Webinar</li>
+                                    <li><span class="type-web_marketing"></span>Web Marketing</li>
+                                </ul>
+                                <div style="clear:both;"></div>
+                            </div>
+                            
+                            <input type="text" id="searchBox" placeholder="Search" onkeyup="doSearch();" style="padding-top: 2px;padding-bottom: 2px;height: 20px;width: 200px;" />
+                        </div>
+                    </td>
+                </tr>
+                
+                <!-- List and calendar content -->
+                <tr>
+                    <td valign="top">
+                        <!-- Calendar Content -->
+                        <apex:outputPanel id="calPanel">
+                            <div id="calendar"></div>
+
+                            <!-- This code is for the pop up dialog box -->
+                            <div id="eventContent" title="Event Details">
+                                <i><span id="dialogStartTime"></span> - <span id="dialogEndTime"></span></i>
+                                <br/>
+                                <table>
+                                    <tbody>
+                                        <tr>
+                                            <td id="dialogFront"><b>Owner</b>:</td>
+                                            <td width="100%"><span id="dialogOwner"></span></td>
+                                        </tr>
+                                        <tr>
+                                            <td id="dialogFront"><b>Region</b>:</td>
+                                            <td><span id="dialogRegion"></span></td>
+                                        </tr>
+                                        <tr>
+                                            <td id="dialogFront"><b>Description</b>:</td>
+                                            <td><span id="dialogDescription"></span></td>
+                                        </tr>
+                                        <tr>
+                                            <td id="dialogFront"><b>Cloud</b>:</td>
+                                            <td><span id="dialogCloud"></span></td>
+                                        </tr>
+                                        <tr>
+                                            <td id="dialogFront"><b>Country</b>:</td>
+                                            <td><span id="dialogCountry"></span></td>
+                                        </tr>
+                                        <tr>
+                                            <td id="dialogFront"><b>Type</b>:</td>
+                                            <td><span id="dialogType"></span></td>
+                                        </tr>
+                                        <tr>
+                                            <td id="dialogFront"><b>Segment</b>:</td>
+                                            <td><span id="dialogSegment"></span></td>
+                                        </tr>
+                                        <tr>
+                                            <td id="dialogFront"><b>Source</b>:</td>
+                                            <td><span id="dialogSource"></span></td>
+                                        </tr>
+                                        <tr>
+                                            <td id="dialogFront"><b>Status</b>:</td>
+                                            <td><span id="dialogStatus"></span></td>
+                                        </tr>
+                                        <br/>
+                                    </tbody>
+                                </table>
+                                <p><strong><a id="dialogEventLink" target="_blank"></a></strong></p>
+                            </div>
+                        </apex:outputPanel>
+                        
+                        <!-- List content - only rendered when the list view is selected -->
+                        <div class="dontRenderList">
+                            <!-- quarter and year buttons -->
+                            <div style="margin: 3px; float: right;">
+                                <apex:commandButton id="quarterBtn" action="{!toggleQuarterYear}" disabled="{!(quarterOrYear == false)}" value="Q" reRender="QuarterOrYearValue,quarterBtn,yearBtn,results,debug,jsFilter,checkedResults,filter1,filter2,filter3,filter4,filter5,filter6,filter7"
+                                    oncomplete="goToDateFunction('QY');" style="padding:7px; margin-right: -1px; border-top-right-radius: 0px; border-bottom-right-radius: 0px;" />
+                                <apex:commandButton id="yearBtn" action="{!toggleQuarterYear}" disabled="{!(quarterOrYear == true)}" value="Y" reRender="QuarterOrYearValue,quarterBtn,yearBtn,results,debug,jsFilter,checkedResults,filter1,filter2,filter3,filter4,filter5,filter6,filter7"
+                                    oncomplete="goToDateFunction('QY');" style="padding:7px; margin-left: 0px; border-top-left-radius: 0px; border-bottom-left-radius: 0px;" />
+                            </div>
+                            
+                            <apex:pageBlock mode="edit" id="results" title="Campaigns">
+                                <div style="max-height:500px; overflow-y:scroll;">
+                                    
+                                    <apex:pageBlockTable value="{!calendarEvents}" var="cal">
+
+                                        <apex:column width="250px">
+                                            <apex:facet name="header">
+                                                <apex:commandLink value="Campaign Name" action="{!toggleSort}" rerender="results,debug">
+                                                    <apex:param name="sortField" value="Name" assignTo="{!sortField}" />
+                                                </apex:commandLink>
+                                            </apex:facet>
+                                            <apex:outputLink value="https://login.salesforce.com/{!cal.url}">{!cal.title}</apex:outputLink>
+                                        </apex:column>
+
+                                        <apex:column width="80px">
+                                            <apex:facet name="header">
+                                                <apex:commandLink value="Start Date" action="{!toggleSort}" rerender="results,debug">
+                                                    <apex:param name="sortField" value="StartDate" assignTo="{!sortField}" />
+                                                </apex:commandLink>
+                                            </apex:facet>
+                                            <apex:outputText value="{!cal.startString}" />
+                                        </apex:column>
+
+                                        <apex:column width="80px">
+                                            <apex:facet name="header">
+                                                <apex:commandLink value="End Date" action="{!toggleSort}" rerender="results,debug">
+                                                    <apex:param name="sortField" value="EndDate" assignTo="{!sortField}" />
+                                                </apex:commandLink>
+                                            </apex:facet>
+                                            <apex:outputText value="{!cal.endString}" />
+                                        </apex:column>
+
+                                        <apex:column width="100px">
+                                            <apex:facet name="header">
+                                                <apex:outputText value="Segment"></apex:outputText>
+                                            </apex:facet>
+                                            <apex:outputText value="{!cal.segmentCamp}" />
+                                        </apex:column>
+
+                                        <apex:column width="100px">
+                                            <apex:facet name="header">
+                                                <apex:commandLink value="Type" action="{!toggleSort}" rerender="results,debug">
+                                                    <apex:param name="sortField" value="Type" assignTo="{!sortField}" />
+                                                </apex:commandLink>
+                                            </apex:facet>
+                                            <apex:outputText value="{!cal.typeCamp}" />
+                                        </apex:column>
+
+                                        <apex:column width="100px">
+                                            <apex:facet name="header">
+                                                <apex:commandLink value="Owner" action="{!toggleSort}" rerender="results,debug">
+                                                    <apex:param name="sortField" value="Owner.Name" assignTo="{!sortField}" />
+                                                </apex:commandLink>
+                                            </apex:facet>
+                                            <apex:outputText value="{!cal.ownerCamp}" />
+                                        </apex:column>
+
+                                        <apex:column width="250px">
+                                            <apex:facet name="header">
+                                                <apex:outputText value="Cloud"></apex:outputText>
+                                            </apex:facet>
+                                            <apex:outputText value="{!cal.cloudCamp}" />
+                                        </apex:column>
+
+                                        <apex:column >
+                                            <apex:facet name="header">
+                                                <apex:commandLink value="Expected Pipeline" action="{!toggleSort}" rerender="results,debug">
+                                                    <apex:param name="sortField" value="Expected_Pipeline__c" assignTo="{!sortField}" />
+                                                </apex:commandLink>
+                                            </apex:facet>
+                                            <apex:outputText rendered="{!(cal.expPipeCamp != null)}" value="$" />
+                                            <apex:outputText value="{!cal.expPipeCamp}" />
+                                        </apex:column>
+
+                                        <apex:column >
+                                            <apex:facet name="header">
+                                                <apex:commandLink value="Net New Pipeline" action="{!toggleSort}" rerender="results,debug">
+                                                    <apex:param name="sortField" value="Net_New_Pipeline__c" assignTo="{!sortField}" />
+                                                </apex:commandLink>
+                                            </apex:facet>
+                                            <apex:outputText rendered="{!(cal.newPipeCamp != null)}" value="$" />
+                                            <apex:outputText value="{!cal.newPipeCamp}" />
+                                        </apex:column>
+
+                                        <apex:column >
+                                            <apex:facet name="header">
+                                                <apex:commandLink value="Net New ACV" action="{!toggleSort}" rerender="results,debug">
+                                                    <apex:param name="sortField" value="Net_New_ACV__c" assignTo="{!sortField}" />
+                                                </apex:commandLink>
+                                            </apex:facet>
+                                            <apex:outputText rendered="{!(cal.newACVCamp != null)}" value="$" />
+                                            <apex:outputText value="{!cal.newACVCamp}" />
+                                        </apex:column>
+
+                                    </apex:pageBlockTable>
+                                    
+                                    <!-- when the query returns null -->
+                                    <strong><apex:outputText rendered="{!(calendarEvents.size = 0)}" value="Sorry, there are no campaigns matching that criteria." style="font-size:20px"/></strong>
+                                </div>
+                            </apex:pageBlock>
+                        </div>
+                    </td>
+                </tr>
+            </table>
+        </apex:pageBlock>
+        
+        <!-- Debug SOQL -->
+        <apex:pageBlock title="Debug - SOQL" id="debug">
+            <apex:outputText value="{!debugSoql}" />
+        </apex:pageBlock>
+    </apex:form>
+</apex:page>
